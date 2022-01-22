@@ -1,3 +1,245 @@
+<!-- livebook:{"persist_outputs":true} -->
+
 # 0x02 Contract Interactor
 
-## // TODO
+## 1 WTF is ABI?
+
+> ABI 是与 EVM 上的合约进行交互的标准方法，`.abi`文件中包含了函数接口描述与事件描述，呈现方式为`json`。
+> 
+> Hello World 合约的 ABI 如下：
+> 
+> ```json
+> [{
+>       "constant": true,
+>       "inputs": [],
+>       "name": "get",
+>       "outputs": [{
+>           "name": "",
+>           "type": "string"
+>         }
+>       ],
+>       "payable": false,
+>       "stateMutability": "view",
+>       "type": "function"
+> }]
+> ```
+
+## 2 交易结构
+
+在 Elixir 中，我们可以通过代码简单清晰地理解结构体（Struct）。
+
+我们可以把 Ethereum 中的交易用如下的 Elixir Struct 表示：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+%Transaction{
+  nonce: nonce, # 确保交易顺序的累加器
+  gas_price: @gas.price, # gas 费用
+  gas_limit: @gas.limit, # gas 上限
+  to: bin_to, # Binary 形式的地址
+  value: 0, # 要发送的以太币
+  init: <<>>, # 机器码
+  data: data # 要发送给to地址的数据
+}
+```
+
+需要注意的是，我们现在只做数据的读取，因此 nonce 这个参数是不需要的，nonce 参数只有在写操作时才会需要，也才会发生改变。
+
+> #### eth_call
+> 
+> Executes a new message call immediately without creating a transaction on the block chain.
+> 
+> ##### Parameters
+> 
+> 1. `Object` - The transaction call object
+> 
+> * `from`: `DATA`, 20 Bytes - (optional) The address the transaction is sent from.
+> * `to`: `DATA`, 20 Bytes - The address the transaction is directed to.
+> * `gas`: `QUANTITY` - (optional) Integer of the gas provided for the transaction execution. eth_call consumes zero gas, but this parameter may be needed by some executions.
+> * `gasPrice`: `QUANTITY` - (optional) Integer of the gasPrice used for each paid gas
+> * `value`: `QUANTITY` - (optional) Integer of the value sent with this transaction
+> * `data`: `DATA` - (optional) Hash of the method signature and encoded parameters. For details see [Ethereum Contract ABI in the Solidity documentation](https://solidity.readthedocs.io/en/latest/abi-spec.html)
+> 
+> 1. `QUANTITY|TAG` - integer block number, or the string `"latest"`, `"earliest"` or `"pending"`, see the [default block parameter](https://eth.wiki/json-rpc/API#the-default-block-parameter)
+> 
+> ##### Returns
+> 
+> `DATA` - the return value of executed contract.
+> 
+> ##### Example
+> 
+> ```javascript
+> // Request
+> curl -X POST --data '{"jsonrpc":"2.0","method":"eth_call","params":[{see above}],"id":1}'
+> 
+> // Result
+> {
+>   "id":1,
+>   "jsonrpc": "2.0",
+>   "result": "0x"
+> }
+> ```
+> 
+> ——https://eth.wiki/json-rpc/API
+
+在 Rust 中我们也有相似的结构：
+
+```rust
+// from: https://kauri.io/#collections/A%20Hackathon%20Survival%20Guide/sending-ethereum-transactions-with-rust/
+let tx = TransactionRequest {
+        from: accounts[0],
+        to: Some(accounts[1]),
+        gas: None, // 即 gas limit
+        gas_price: None,
+        value: Some(U256::from(10000)),
+        data: None,
+        nonce: None,
+        condition: None
+    };
+```
+
+我们现在只是要把流程跑通，所以可以先不用去管 gas_price 和 gas_limit，写死即可：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+@gas %{price: 0, limit: 300_000}
+```
+
+那么，现在只要搞定 2 个参数即可：to 和 data。
+
+## 3 从智能合约函数到Data
+
+通过「函数字符串标识」与参数列表（params list）生成 data：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+@spec get_data(String.t(), List.t()) :: String.t()
+def get_data(func_str, params) do
+  payload =
+  func_str
+  |> ABI.encode(params)
+  |> Base.encode16(case: :lower)
+
+  "0x" <> payload
+end
+```
+
+函数字符串标识的例子：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+@func %{
+    balance_of: "balanceOf(address)",
+    token_of_owner_by_index: "tokenOfOwnerByIndex(address, uint256)",
+    token_uri: "tokenURI(uint256)",
+    get_evidence_by_key: "getEvidenceByKey(string)",
+    new_evidence_by_key: "newEvidenceByKey(string, string)",
+    mint_nft: "mintNft(address, string)",
+    owner_of: "ownerOf(uint256)"
+    }
+```
+
+简单来说就是「函数名(参数1类型, 参数2类型, …)」。
+
+我们可以跳转过去，查看 `encode` 函数的实现：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+def encode(function_signature, data, data_type \\ :input)
+
+# 在这一步会把 string 格式的 function 解析为 function_selector
+# 然后再次调用 encode 方法，传入 function_selector
+def encode(function_signature, data, data_type) when is_binary(function_signature) do
+  function_signature
+  |> Parser.parse!()
+  |> encode(data, data_type)
+end
+
+def encode(%FunctionSelector{} = function_selector, data, data_type) do
+  TypeEncoder.encode(data, function_selector, data_type)
+end
+```
+
+FunctionSelector 结构体：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+iex(5)> ABI.Parser.parse!("baz(uint8)")
+%ABI.FunctionSelector{
+  function: "baz",
+  input_names: [],
+  inputs_indexed: nil,
+  method_id: nil,
+  returns: [],
+  type: nil,
+  types: [uint: 8]
+}
+```
+
+TypeEncoder.encode 最终负责把 data, function_selector 和 data_type 编译为 data，详见：
+
+> https://github.com/poanetwork/ex_abi/blob/57ba7eb1703d8b0cd0353a0a588feef139b7edf3/lib/abi/type_encoder.ex
+
+## 4 返回数据的转换
+
+调用合约时返回的数据需要从`hex`形态的`data`转换为对应的格式，所以我们要写个 TypeTransalator：
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+defmodule Utils.TypeTranslator do
+  ……
+
+  def data_to_int(raw) do
+    raw
+    |> hex_to_bin()
+    |> ABI.TypeDecoder.decode_raw([{:uint, 256}])
+    |> List.first()
+  end
+
+  def data_to_str(raw) do
+    raw
+    |> hex_to_bin()
+    |> ABI.TypeDecoder.decode_raw([:string])
+    |> List.first()
+  end
+
+  def data_to_addr(raw) do
+    addr_bin =
+      raw
+      |> hex_to_bin()
+      |> ABI.TypeDecoder.decode_raw([:address])
+      |> List.first()
+
+    "0x" <> Base.encode16(addr_bin, case: :lower)
+  end
+
+……
+end
+```
+
+具体采用哪种方式视返回值的类型而定，我们可以通过 ABI 判定返回值：
+
+```json
+{
+    "constant": true,
+    "inputs": [],
+    "name": "get",
+    "outputs": [{
+        "name": "",
+        "type": "string"  # 返回值是string
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+}
+```
+
+## 5 一个调用的例子

@@ -10,7 +10,7 @@ import Config
 config :ethereumex_livebook,
   ecto_repos: [EthereumexLivebook.Repo]
 config :ethereumex,
-  url: "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"
+  url: "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161" # ropsten
 
 # Configures the endpoint
 config :ethereumex_livebook, EthereumexLivebookWeb.Endpoint,
