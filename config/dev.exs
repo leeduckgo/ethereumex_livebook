@@ -72,3 +72,6 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+
+config :ethereumex,
+  url: "https://ropsten.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161"

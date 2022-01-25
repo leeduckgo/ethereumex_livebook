@@ -51,8 +51,11 @@ defmodule EthereumexLivebook.MixProject do
       {:plug_cowboy, "~> 2.5"},
 
       # Ethereum
-      {:ethereumex, "~> 0.7.0"},
+      {:ethereumex, "~> 0.9"},
       {:ex_abi, "~> 0.5.2"},
+      {:ex_rlp, "~> 0.5.3"},
+      {:ex_keccak, "~> 0.3.0"},
+      {:libsecp256k1, "~> 0.1.10"}
     ]
   end
 
