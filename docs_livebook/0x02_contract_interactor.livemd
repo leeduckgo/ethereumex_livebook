@@ -6,29 +6,96 @@
 
 > ABI 是与 EVM 上的合约进行交互的标准方法，`.abi`文件中包含了函数接口描述与事件描述，呈现方式为`json`。
 > 
-> Hello World 合约的 ABI 如下：
+> 我们在 Ropsten 网络部署了一个(测试合约)[https://ropsten.etherscan.io/address/0x545EDf91e91b96cFA314485F5d2A1757Be11d384#contracts]:
 > 
-> ```json
-> [{
->       "constant": true,
->       "inputs": [],
->       "name": "get",
->       "outputs": [{
->           "name": "",
->           "type": "string"
->         }
->       ],
->       "payable": false,
->       "stateMutability": "view",
->       "type": "function"
-> }]
-> ```
+> 它的源码是：
+
+```solidity
+pragma solidity>=0.8.4;
+
+contract helloworld {
+    uint256 name;
+
+    constructor() public {
+        name = 123;
+    }
+
+    function get() public view returns (uint256) {
+        return name;
+    }
+    
+    event Set(address indexed_from, string n);
+    function set(string memory n) public {
+        name = random(string(abi.encodePacked("test", n)));
+        emit Set(msg.sender, n);
+    }
+    
+    function random(string memory input) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(input)));
+    }
+}
+```
+
+对应的 ABI 则是:
+
+```json
+[
+ {
+  "inputs": [],
+  "stateMutability": "nonpayable",
+  "type": "constructor"
+ },
+ {
+  "anonymous": false,
+  "inputs": [
+   {
+    "indexed": false,
+    "internalType": "address",
+    "name": "indexed_from",
+    "type": "address"
+   },
+   {
+    "indexed": false,
+    "internalType": "string",
+    "name": "n",
+    "type": "string"
+   }
+  ],
+  "name": "Set",
+  "type": "event"
+ },
+ {
+  "inputs": [],
+  "name": "get",
+  "outputs": [
+   {
+    "internalType": "uint256",
+    "name": "",
+    "type": "uint256"
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ },
+ {
+  "inputs": [
+   {
+    "internalType": "string",
+    "name": "n",
+    "type": "string"
+   }
+  ],
+  "name": "set",
+  "outputs": [],
+  "stateMutability": "nonpayable",
+  "type": "function"
+ }
+]
+```
 
 ## 2 交易结构
 
-在 Elixir 中，我们可以通过代码简单清晰地理解结构体（Struct）。
-
-我们可以把 Ethereum 中的交易用如下的 Elixir Struct 表示：
+和 Ethereum 交互，我们需要通过一个交易类型的数据结构。在 Elixir 中，可以定义这样的一个 Struct 来表示：
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -36,7 +103,7 @@
 %Transaction{
   nonce: nonce, # 确保交易顺序的累加器
   gas_price: @gas.price, # gas 费用
-  gas_limit: @gas.limit, # gas 上限
+  gas: @gas.limit, # gas 上限
   to: bin_to, # Binary 形式的地址
   value: 0, # 要发送的以太币
   init: <<>>, # 机器码
@@ -44,62 +111,9 @@
 }
 ```
 
-需要注意的是，我们现在只做数据的读取，因此 nonce 这个参数是不需要的，nonce 参数只有在写操作时才会需要，也才会发生改变。
+无论是数据的读取，还是数据的写入，都需要通过 `Transaction` 这个结构和智能合约打交道。如果只是读取数据，nonce 这个参数是不需要的，只有在写操作时才会需要，也才会发生改变。
 
-> #### eth_call
-> 
-> Executes a new message call immediately without creating a transaction on the block chain.
-> 
-> ##### Parameters
-> 
-> 1. `Object` - The transaction call object
-> 
-> * `from`: `DATA`, 20 Bytes - (optional) The address the transaction is sent from.
-> * `to`: `DATA`, 20 Bytes - The address the transaction is directed to.
-> * `gas`: `QUANTITY` - (optional) Integer of the gas provided for the transaction execution. eth_call consumes zero gas, but this parameter may be needed by some executions.
-> * `gasPrice`: `QUANTITY` - (optional) Integer of the gasPrice used for each paid gas
-> * `value`: `QUANTITY` - (optional) Integer of the value sent with this transaction
-> * `data`: `DATA` - (optional) Hash of the method signature and encoded parameters. For details see [Ethereum Contract ABI in the Solidity documentation](https://solidity.readthedocs.io/en/latest/abi-spec.html)
-> 
-> 1. `QUANTITY|TAG` - integer block number, or the string `"latest"`, `"earliest"` or `"pending"`, see the [default block parameter](https://eth.wiki/json-rpc/API#the-default-block-parameter)
-> 
-> ##### Returns
-> 
-> `DATA` - the return value of executed contract.
-> 
-> ##### Example
-> 
-> ```javascript
-> // Request
-> curl -X POST --data '{"jsonrpc":"2.0","method":"eth_call","params":[{see above}],"id":1}'
-> 
-> // Result
-> {
->   "id":1,
->   "jsonrpc": "2.0",
->   "result": "0x"
-> }
-> ```
-> 
-> ——https://eth.wiki/json-rpc/API
-
-在 Rust 中我们也有相似的结构：
-
-```rust
-// from: https://kauri.io/#collections/A%20Hackathon%20Survival%20Guide/sending-ethereum-transactions-with-rust/
-let tx = TransactionRequest {
-        from: accounts[0],
-        to: Some(accounts[1]),
-        gas: None, // 即 gas limit
-        gas_price: None,
-        value: Some(U256::from(10000)),
-        data: None,
-        nonce: None,
-        condition: None
-    };
-```
-
-我们现在只是要把流程跑通，所以可以先不用去管 gas_price 和 gas_limit，写死即可：
+对于 `gas_price` 和 `gas`，读操作一般不需要，即使需要，如果只是要把流程跑通，写死即可：
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -107,11 +121,15 @@ let tx = TransactionRequest {
 @gas %{price: 0, limit: 300_000}
 ```
 
-那么，现在只要搞定 2 个参数即可：to 和 data。
+我们关注的重点可以放在 `to` 和 `data` 上。
 
 ## 3 从智能合约函数到Data
 
-通过「函数字符串标识」与参数列表（params list）生成 data：
+`Transaction` 中的 `data`，是比较特殊的一个参数：
+
+> Hash of the method signature「函数字符串标识」and encoded parameters「参数列表」. For details see [Ethereum Contract ABI in the Solidity documentation](https://solidity.readthedocs.io/en/latest/abi-spec.html)
+
+那如何通过「函数字符串标识」与参数列表（params list）生成 data 呢？
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -140,12 +158,12 @@ end
     new_evidence_by_key: "newEvidenceByKey(string, string)",
     mint_nft: "mintNft(address, string)",
     owner_of: "ownerOf(uint256)"
-    }
+}
 ```
 
 简单来说就是「函数名(参数1类型, 参数2类型, …)」。
 
-我们可以跳转过去，查看 `encode` 函数的实现：
+我们可以去查看 `encode` 函数的实现：
 
 <!-- livebook:{"force_markdown":true} -->
 
@@ -194,8 +212,6 @@ TypeEncoder.encode 最终负责把 data, function_selector 和 data_type 编译�
 
 ```elixir
 defmodule Utils.TypeTranslator do
-  ……
-
   def data_to_int(raw) do
     raw
     |> hex_to_bin()
@@ -220,26 +236,249 @@ defmodule Utils.TypeTranslator do
     "0x" <> Base.encode16(addr_bin, case: :lower)
   end
 
+  def hex_to_int(hex) do
+    hex
+    |> String.slice(2..-1)
+    |> String.to_integer(16)
+  end
+
 ……
 end
 ```
 
-具体采用哪种方式视返回值的类型而定，我们可以通过 ABI 判定返回值：
+具体采用哪种方式，视返回值的类型而定。我们通过测试合约的 ABI 可判定，返回值是 int：
 
 ```json
 {
-    "constant": true,
-    "inputs": [],
-    "name": "get",
-    "outputs": [{
-        "name": "",
-        "type": "string"  # 返回值是string
-      }
-    ],
-    "payable": false,
-    "stateMutability": "view",
-    "type": "function"
-}
+  "inputs": [],
+  "name": "get",
+  "outputs": [
+   {
+    "internalType": "uint256",
+    "name": "",
+    "type": "uint256"   # 返回值是 int
+   }
+  ],
+  "stateMutability": "view",
+  "type": "function"
+ }
 ```
 
-## 5 一个调用的例子
+## 5 从合约读取数据
+
+从合约读取数据，需要通过 `eth_call` 方法：
+
+> #### eth_call
+> 
+> Executes a new message call immediately without creating a transaction on the block chain.
+> 
+> ##### Parameters
+> 
+> 1. `Object` - The transaction call object
+> 
+> * `from`: `DATA`, 20 Bytes - (optional) The address the transaction is sent from.
+> * `to`: `DATA`, 20 Bytes - The address the transaction is directed to.
+> * `gas`: `QUANTITY` - (optional) Integer of the gas provided for the transaction execution. eth_call consumes zero gas, but this parameter may be needed by some executions.
+> * `gasPrice`: `QUANTITY` - (optional) Integer of the gasPrice used for each paid gas
+> * `value`: `QUANTITY` - (optional) Integer of the value sent with this transaction
+> * `data`: `DATA` - (optional) Hash of the method signature and encoded parameters. For details see [Ethereum Contract ABI in the Solidity documentation](https://solidity.readthedocs.io/en/latest/abi-spec.html)
+> 
+> 1. `QUANTITY|TAG` - integer block number, or the string `"latest"`, `"earliest"` or `"pending"`, see the [default block parameter](https://eth.wiki/json-rpc/API#the-default-block-parameter)
+> 
+> ##### Returns
+> 
+> `DATA` - the return value of executed contract.
+
+下面是通过调用测试合约的 `get` 方法，获取合约中保存的 `name` 的方式：
+
+```elixir
+alias Ethereumex.HttpClient
+
+defmodule DataConvertor do
+  def get_data(func_str, params) do
+    payload =
+      func_str
+      |> ABI.encode(params)
+      |> Base.encode16(case: :lower)
+
+    "0x" <> payload
+  end
+end
+
+contract_address = "0x545EDf91e91b96cFA314485F5d2A1757Be11d384"
+
+transaction = %{
+  "to" => contract_address,
+  "data" => DataConvertor.get_data("get()", [])
+}
+
+{:ok, result} = HttpClient.eth_call(transaction)
+
+result
+|> Utils.TypeTranslator.data_to_int()
+```
+
+```output
+123
+```
+
+## 6 Gas 费估算方法
+
+好了，我们已经试过如何从合约中读取数据，下面开始准备通过合约写数据了。
+
+在开始正式写数据前，我们需要先估算大概需要用多少的 Gas。这可以通过调用 `eth_estimateGas` 方法获得：
+
+> #### eth_estimateGas
+> 
+> Generates and returns an estimate of how much gas is necessary to allow the transaction to complete. The transaction will not be added to the blockchain. Note that the estimate may be significantly more than the amount of gas actually used by the transaction, for a variety of reasons including EVM mechanics and node performance.
+> 
+> ##### Parameters
+> 
+> See `eth_call` parameters, expect that all properties are optional. If no gas limit is specified geth uses the block gas limit from the pending block as an upper bound. As a result the returned estimate might not be enough to executed the call/transaction when the amount of gas is higher than the pending block gas limit.
+> 
+> ##### Returns
+> 
+> `QUANTITY` - the amount of gas used.
+
+虽然说所有的参数都是可选的，其实对应合约不同的方法，需要的 Gas 不一样，因为合约方法的复杂程度不同。
+
+大家可以测试一下，`Transaction` 里面什么参数都不给，或者提供合约的地址 `to` 和 `data`。`data` 的值是要调用的写方法的 Hash。
+
+```elixir
+alias Ethereumex.HttpClient
+
+contract_address = "0x545EDf91e91b96cFA314485F5d2A1757Be11d384"
+
+transaction = %{
+  "to" => contract_address,
+  "data" => DataConvertor.get_data("set(string)", ["test"])
+}
+
+{:ok, gas} = HttpClient.eth_estimate_gas(transaction)
+
+Utils.TypeTranslator.hex_to_int(gas)
+```
+
+```output
+31118
+```
+
+## 7 对智能合约发起写操作
+
+要对合约发起写操作，`Transaction` 的参数和处理需要比读取复杂很多。`eth_sendRawTransaction` 方法可把一条已经签名的交易提交到 Ethereum 网络。
+
+> #### eth_sendRawTransaction
+> 
+> Creates new message call transaction or a contract creation for signed transactions.
+> 
+> ##### Parameters
+> 
+> `DATA`, The signed transaction data.
+> 
+> > params: ["0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675"]
+> 
+> ##### Returns
+> 
+> `DATA`, 32 Bytes - the transaction hash, or the zero hash if the transaction is not yet available.
+
+要对 `Transaction` 进行签名，需要经过好几个步骤：
+
+* Encode the transaction parameters: `RLP(nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0)`.
+* Get the Keccak256 hash of the RLP-encoded, unsigned transaction.
+* Sign the hash with a private key using the ECDSA algorithm, obtaining the signature {`v`, `r`, `s`}.
+* Encode the signed transaction: `RLP(nonce, gasPrice, gasLimit, to, value, data, v, r, s)`.
+
+```elixir
+alias Ethereumex.HttpClient
+
+defmodule Transaction do
+  defstruct from: <<>>, to: <<>>, gas: 0, gas_price: 0, value: 0, init: <<>>, data: <<>>
+
+  @base_recovery_id_eip_155 35
+
+  def send(chain_id, priv_key, tx) do
+    items = prepare_items(tx)
+
+    # Refer to EIP-155, we SHOULD hash nine rlp encoded elements:
+    # (nonce, gasprice, startgas, to, value, data, chainid, 0, 0)
+    hashed_tx = hash(items ++ [encode_unsigned(chain_id), <<>>, <<>>])
+
+    {v, r, s} = sign(hashed_tx, priv_key, chain_id)
+
+    raw_tx =
+      (items ++
+         [
+           encode_unsigned(v),
+           encode_unsigned(r),
+           encode_unsigned(s)
+         ])
+      |> ExRLP.encode(encoding: :hex)
+
+    HttpClient.eth_send_raw_transaction("0x" <> raw_tx)
+  end
+
+  defp prepare_items(tx) do
+    nonce = get_nonce(tx.from)
+
+    [
+      encode_unsigned(nonce),
+      encode_unsigned(tx.gas_price),
+      encode_unsigned(tx.gas),
+      tx.to |> String.replace("0x", "") |> Base.decode16!(case: :mixed),
+      encode_unsigned(tx.value || 0),
+      if(tx.to == <<>>, do: <<>>, else: tx.data)
+    ]
+  end
+
+  defp hash(items) do
+    items
+    |> ExRLP.encode(encoding: :binary)
+    |> ExKeccak.hash_256()
+  end
+
+  defp sign(hashed_tx, priv_key, chain_id) do
+    {:ok, <<r::size(256), s::size(256)>>, recovery_id} =
+      :libsecp256k1.ecdsa_sign_compact(hashed_tx, priv_key, :default, <<>>)
+
+    # Refer to EIP-155
+    recovery_id = chain_id * 2 + @base_recovery_id_eip_155 + recovery_id
+
+    {recovery_id, r, s}
+  end
+
+  defp get_nonce(wallet_address) do
+    {:ok, hex} = HttpClient.eth_get_transaction_count(wallet_address)
+
+    Utils.TypeTranslator.hex_to_int(hex)
+  end
+
+  defp encode_unsigned(0), do: <<>>
+  defp encode_unsigned(number), do: :binary.encode_unsigned(number)
+end
+
+defmodule SendTransaction do
+  def send() do
+    # Ropsten - 3, Main - 1
+    chain_id = 3
+    contract_address = "0x545EDf91e91b96cFA314485F5d2A1757Be11d384"
+    # Provide your ETH address
+    wallet_address = "0xC0802222dB0F31d63dc85d9C8CAa00485715A13c"
+
+    transaction = %Transaction{
+      from: wallet_address,
+      to: contract_address,
+      gas: 3_000_000,
+      gas_price: 0,
+      data: ABI.encode("set(string)", ["test"])
+    }
+
+    # The private key of the wallet_address
+    private_key = "c2beec8c1ca062a25ce1e7347ddc86714da52024b5da8dcbc92b29cf2bbfbe1c"
+
+    {:ok, txn_hash} = Transaction.send(chain_id, private_key, transaction)
+    txn_hash
+  end
+end
+
+SendTransaction.send()
+```
