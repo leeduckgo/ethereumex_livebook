@@ -4,6 +4,10 @@
 
 ## 1 WTF is ABI?
 
+本篇作者：[kenspirit](https://github.com/kenspirit), [leeduckgo](https://github.com/leeduckgo)
+
+<!-- livebook:{"break_markdown":true} -->
+
 > ABI 是与 EVM 上的合约进行交互的标准方法，`.abi`文件中包含了函数接口描述与事件描述，呈现方式为`json`。
 > 
 > 我们在 Ropsten 网络部署了一个(测试合约)[https://ropsten.etherscan.io/address/0x545EDf91e91b96cFA314485F5d2A1757Be11d384#contracts]:
@@ -314,12 +318,7 @@ transaction = %{
 
 {:ok, result} = HttpClient.eth_call(transaction)
 
-result
-|> Utils.TypeTranslator.data_to_int()
-```
-
-```output
-123
+Utils.TypeTranslator.data_to_int(result)
 ```
 
 ## 6 Gas 费估算方法
@@ -356,11 +355,18 @@ transaction = %{
 
 {:ok, gas} = HttpClient.eth_estimate_gas(transaction)
 
-Utils.TypeTranslator.hex_to_int(gas)
-```
+IO.puts("Gas Fee:#{Utils.TypeTranslator.hex_to_int(gas)}")
 
-```output
-31118
+{:ok, gas_price} = HttpClient.eth_gas_price()
+IO.puts("Gas Price:#{Utils.TypeTranslator.hex_to_int(gas_price)}")
+
+# Using the server apply by third party
+# {:ok, payload} = Utils.Http.get("https://ethgas.watch/api/gas")
+# %{normal: %{gwei: gas_price_in_gwei}}  = ExStructTranslator.to_atom_struct(payload)
+
+# IO.puts("Gas Price in Gwei:#{gas_price_in_gwei}")
+
+# IO.puts("Gas Price in Wei: #{gas_price_in_gwei* 1_000_000_000}")
 ```
 
 ## 7 对智能合约发起写操作
@@ -392,7 +398,7 @@ Utils.TypeTranslator.hex_to_int(gas)
 alias Ethereumex.HttpClient
 
 defmodule Transaction do
-  defstruct from: <<>>, to: <<>>, gas: 0, gas_price: 0, value: 0, init: <<>>, data: <<>>
+  defstruct from: <<>>, to: <<>>, gas_price: 0, gas_limit: 0, value: 0, init: <<>>, data: <<>>
 
   @base_recovery_id_eip_155 35
 
@@ -417,13 +423,28 @@ defmodule Transaction do
     HttpClient.eth_send_raw_transaction("0x" <> raw_tx)
   end
 
+  def get_gas(contract_address, behaviour, payloads) do
+    transaction = %{
+      "to" => contract_address,
+      "data" => DataConvertor.get_data(behaviour, payloads)
+    }
+
+    {:ok, gas_limit} = HttpClient.eth_estimate_gas(transaction)
+    {:ok, gas_price} = HttpClient.eth_gas_price()
+
+    {
+      Utils.TypeTranslator.hex_to_int(gas_limit),
+      Utils.TypeTranslator.hex_to_int(gas_price)
+    }
+  end
+
   defp prepare_items(tx) do
     nonce = get_nonce(tx.from)
 
     [
       encode_unsigned(nonce),
       encode_unsigned(tx.gas_price),
-      encode_unsigned(tx.gas),
+      encode_unsigned(tx.gas_limit),
       tx.to |> String.replace("0x", "") |> Base.decode16!(case: :mixed),
       encode_unsigned(tx.value || 0),
       if(tx.to == <<>>, do: <<>>, else: tx.data)
@@ -446,7 +467,7 @@ defmodule Transaction do
     {recovery_id, r, s}
   end
 
-  defp get_nonce(wallet_address) do
+  def get_nonce(wallet_address) do
     {:ok, hex} = HttpClient.eth_get_transaction_count(wallet_address)
 
     Utils.TypeTranslator.hex_to_int(hex)
@@ -455,30 +476,69 @@ defmodule Transaction do
   defp encode_unsigned(0), do: <<>>
   defp encode_unsigned(number), do: :binary.encode_unsigned(number)
 end
+```
 
-defmodule SendTransaction do
-  def send() do
-    # Ropsten - 3, Main - 1
-    chain_id = 3
-    contract_address = "0x545EDf91e91b96cFA314485F5d2A1757Be11d384"
-    # Provide your ETH address
-    wallet_address = "0xC0802222dB0F31d63dc85d9C8CAa00485715A13c"
+```output
+{:module, Transaction, <<70, 79, 82, 49, 0, 0, 22, ...>>, {:encode_unsigned, 1}}
+```
 
-    transaction = %Transaction{
-      from: wallet_address,
-      to: contract_address,
-      gas: 3_000_000,
-      gas_price: 0,
-      data: ABI.encode("set(string)", ["test"])
-    }
+```elixir
+payload = "whatever"
+# Ropsten - 3, Main - 1
+chain_id = 3
+contract_address = "0x545EDf91e91b96cFA314485F5d2A1757Be11d384"
+# Provide your ETH address
+wallet_address = "0x7006D73CA2Bf85946d7774DeFEDcfe91b525Fcfa"
+{gas_limit, gas_price} = Transaction.get_gas(contract_address, "set(string)", [payload])
+```
 
-    # The private key of the wallet_address
-    private_key = "c2beec8c1ca062a25ce1e7347ddc86714da52024b5da8dcbc92b29cf2bbfbe1c"
+```output
+{31166, 2213232131}
+```
 
-    {:ok, txn_hash} = Transaction.send(chain_id, private_key, transaction)
-    txn_hash
-  end
-end
+```elixir
+{gas, gas_price} = Transaction.get_gas(contract_address, "set(string)", [payload])
 
-SendTransaction.send()
+transaction = %Transaction{
+  from: wallet_address,
+  to: contract_address,
+  # to make it faster
+  gas_limit: gas_limit,
+  gas_price: gas_price,
+  data: ABI.encode("set(string)", [payload])
+}
+
+# The private key of the wallet_address
+# !PUT URSELF TEST ACCT
+private_key =
+  Base.decode16!(
+    "f8431736925eff86bf2d355fdc984a47a0344fd4930bc393ea69b7652019b3ee",
+    case: :lower
+  )
+
+{:ok, txn_hash} = Transaction.send(chain_id, private_key, transaction)
+txn_hash
+```
+
+```output
+"0xa6d53c3460d3afd7e49741e819d24f1925876bc9e67c507f9fac07321286e841"
+```
+
+```elixir
+Transaction.get_nonce(wallet_address)
+```
+
+```elixir
+transaction = %{
+  "to" => contract_address,
+  "data" => DataConvertor.get_data("get()", [])
+}
+
+{:ok, result} = HttpClient.eth_call(transaction)
+
+Utils.TypeTranslator.data_to_int(result)
+```
+
+```output
+6052719519220112789037649023440142942186299881749388543372669436705686836071
 ```

@@ -36,6 +36,7 @@ defmodule EthereumexLivebook.MixProject do
       {:phoenix, "~> 1.6.0"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto_sql, "~> 3.6"},
+      {:ecto, "~> 3.7.0", override: true},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 3.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
@@ -50,12 +51,19 @@ defmodule EthereumexLivebook.MixProject do
       {:jason, "~> 1.2"},
       {:plug_cowboy, "~> 2.5"},
 
+      # http
+      {:httpoison, "~> 1.5"},
+      {:poison, "~> 3.1"},
+
       # Ethereum
       {:ethereumex, "~> 0.9"},
       {:ex_abi, "~> 0.5.2"},
       {:ex_rlp, "~> 0.5.3"},
       {:ex_keccak, "~> 0.3.0"},
-      {:libsecp256k1, "~> 0.1.10"}
+      {:libsecp256k1, "~> 0.1.10"},
+
+      # util tools
+      {:ex_struct_translator, "~> 0.1.1"},
     ]
   end
 
