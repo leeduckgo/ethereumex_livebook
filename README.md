@@ -16,6 +16,8 @@ elixir --name livebook@127.0.0.1 -S mix phx.server
 
 ![image](https://user-images.githubusercontent.com/12784118/151190751-cc3b139f-207c-4d3c-9d5a-c2e15868f0d6.png)
 
+![image](https://user-images.githubusercontent.com/12784118/151191321-e6a8ba59-0eff-466d-bfbc-7a3413d5d01e.png)
+
 ![image](https://user-images.githubusercontent.com/12784118/151191072-b73a2048-f40b-43e2-8e81-fe75065cb0de.png)
 
 
