@@ -78,6 +78,11 @@ end
 
 It's ok to use another provider to override the default provider,just add 
 `url: "provider_uri"` as the last param of the function.
+> **attention: **
+> some func has optional param, such as `getBalance` it can be search in:
+> https://web3js.readthedocs.io/en/v1.7.0/web3-eth.html?highlight=Balance#getbalance
+> and see in:
+> https://github.com/mana-ethereum/ethereumex/blob/1edc90411736a1c1dfb919fda3522f158c1af2b8/lib/ethereumex/client/behaviour.ex
 
 <!-- livebook:{"break_markdown":true} -->
 
